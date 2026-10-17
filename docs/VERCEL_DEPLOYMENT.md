@@ -1,0 +1,17 @@
+# Deploying FundFlow to Vercel
+Nothing here has been run against a real Supabase or Vercel project. Follow in order. Use synthetic data first.
+
+1. **Git.** `git init && git add -A && git commit -m "FundFlow"`, create an empty GitHub repo, `git remote add origin <url> && git push -u origin main`. `.env.local` is already ignored.
+2. **Supabase test project.** Create a new project (not one with real data). Note the URL, anon key and service-role key.
+3. **Migrations.** For a fresh project, take a backup point (Database > Backups), then run the SQL editor with `0001_init.sql`, `0002_hardening.sql`, `0003_phase2.sql`, `0004_phase3.sql`, one file at a time, in that order, once each. If any fails, stop and restore, do not rerun partially. For an existing database, identify the applied version first and run only later files. Confirm the private bucket `org-docs` exists and is not public (Storage).
+4. **Supabase Auth.** Authentication > URL Configuration: Site URL = your `APP_BASE_URL`. Redirect URLs: `<APP_BASE_URL>/app` and `http://localhost:3000/app`. Decide on "Confirm email" (on for real use, off only for a throwaway test).
+5. **Environment variables** (Vercel > Settings > Environment Variables). Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `APP_BASE_URL`. Optional: `OPENAI_API_KEY`, `OPENAI_MODEL`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `CRON_SECRET`, `SCORE_WEIGHTS`. Never create a `NEXT_PUBLIC_` variable for a secret. Do not set `WHATSAPP_DEMO`. `NEXT_PUBLIC_*` values are baked in at build, redeploy after changing them. Use separate values for Preview and Production.
+6. **Import** the repo in Vercel (Framework: Next.js). Node 20 or newer (`engines` and `.nvmrc` set).
+7. **Deploy** and read the build log (expect no errors) and runtime logs.
+8. **Smoke tests on the deployed URL.** Landing loads. Sign up and sign in. Create an organization and finish setup. Add a manual grant (the Add screen says demo or live). Open it, edit a field, see "corrected by you". Create a task and a note. Check Team and Documents. Create a second account and organization and confirm it cannot see the first one's data.
+9. **Twilio.** Only after steps 5 to 8 pass. In the Twilio sandbox set "When a message comes in" to `<APP_BASE_URL>/api/whatsapp`, method POST, no query string. In the app, WhatsApp tab, add your number, send `VERIFY <code>` from it within 15 minutes, then forward a test grant. Webhooks work only on the production domain, because the signature uses `APP_BASE_URL`.
+10. **Cron.** `vercel.json` declares a daily 06:00 UTC job. Set `CRON_SECRET`, redeploy, open the project's Cron Jobs settings to confirm it is registered, then test: `curl -H "Authorization: Bearer $CRON_SECRET" <APP_BASE_URL>/api/cron` (expect `{"created":n}`) and without the header (expect 403). Check your plan's cron limits and that `maxDuration` (30 and 60 seconds on some routes) fits your plan.
+11. **Promote.** Assign your production domain, update `APP_BASE_URL` and Supabase Auth URLs to match, redeploy, repeat the smoke tests.
+12. **Rollback.** Code: Vercel Deployments > previous deployment > Instant Rollback. Database: there are no down migrations. Restore from the backup taken in step 3, or ship a forward fix. Rotate keys if any were exposed.
+
+Post-launch: set a retention plan for `inbound_messages`, enable backups, keep the service-role key out of logs and screenshots.
